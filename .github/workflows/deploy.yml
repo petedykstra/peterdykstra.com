@@ -16,12 +16,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The GODADDY secret holds three lines: server, username, password.
+      - name: Read FTP login from GODADDY secret
+        id: ftp
+        env:
+          CREDS: ${{ secrets.GODADDY }}
+        run: |
+          line() { printf '%s\n' "$CREDS" | sed -n "${1}p" | tr -d '\r'; }
+          server=$(line 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          user=$(line 2 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          pass=$(line 3)
+          for v in "$server" "$user" "$pass"; do [ -n "$v" ] && echo "::add-mask::$v"; done
+          if [ -z "$server" ] || [ -z "$user" ] || [ -z "$pass" ]; then
+            echo "::error::GODADDY secret must have 3 lines: server, username, password"; exit 1
+          fi
+          {
+            echo "server=$server"
+            echo "username=$user"
+            echo "password=$pass"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upload public/ over FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
+          server: ${{ steps.ftp.outputs.server }}
+          username: ${{ steps.ftp.outputs.username }}
+          password: ${{ steps.ftp.outputs.password }}
           local-dir: ./public/
           server-dir: ./public_html/
           # Only uploads changed files; never deletes anything already on the server
